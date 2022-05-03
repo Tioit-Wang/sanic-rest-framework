@@ -48,85 +48,10 @@ app = Sanic(name='your app name', request_class=SRFRequest)
 
 ## Simple example
 
-> model.py
+[Example in github](https://github.com/Tioit-Wang/srf_simple_example)
 
-```python
-from tortoise import Model, fields
+[Open example in web vscode](https://vscode.dev/github/Tioit-Wang/srf_simple_example)
 
-class UserModel(Model):
-    id = fields.IntField(pk=True)
-    name = fields.CharField(50)
-
-    def __str__(self):
-        return f"User {self.id}: {self.name}"
-```
-
-> serializers.py
-
-```python
-class UserSerializer(ModelSerializer):
-    class Meta:
-        model = UserModel
-        read_only_fields = ('id')
-```
-
-> app.py
-
-```python
-import logging
-
-from sanic import Sanic, response
-
-from srf.request import SRFRequest
-from srf.routes import ViewSetRouter
-from srf.serializers import ModelSerializer
-from srf.views import ModelViewSet
-
-from tortoise import Model, fields
-from tortoise.contrib.sanic import register_tortoise
-
-from serializers import UserSerializer
-from models import UserModel
-
-logging.basicConfig(level=logging.DEBUG)
-app = Sanic(__name__, request_class=SRFRequest)
-
-class TestView(ModelViewSet):
-    serializer_class = UserSerializer
-    queryset = UserModel
-    search_fields = ('@question',)
-
-
-route = ViewSetRouter()
-route.register(TestView, '/TestView', 'test', True)
-for i in route.urls:
-    i.pop('is_base')
-    app.add_route(**i)
-
-register_tortoise(
-    app, db_url="sqlite://:memory:", modules={"models": ['models']}, generate_schemas=True
-)
-
-if __name__ == "__main__":
-    app.run(port=5000)
-```
-
-Accessing `http://127.0.0.1:5000/TestView` yields the following response
-
-```json5
-{
-    "data": {
-        "count": 0,
-        "next": null,
-        "next_page_num": null,
-        "previous": null,
-        "previous_num": 0,
-        "results": []
-    },
-    "message": "Success",
-    "status": 1
-}
-```
 
 ## Project plan
 
@@ -147,9 +72,6 @@ Accessing `http://127.0.0.1:5000/TestView` yields the following response
 - [x] Support tortoise-orm
 - [ ] Support GINO-orm
 
-## Complete example
-
-......
 
 ## Project Template
 
