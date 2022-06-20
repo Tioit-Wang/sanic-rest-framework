@@ -1,10 +1,10 @@
 """
-@Author：WangYuXiang
-@E-mile：Hill@3io.cc
-@CreateTime：2021/4/25 16:51
-@DependencyLibrary：无
-@MainFunction：无
-@FileDoc： 
+@Author:WangYuXiang
+@E-mile:Hill@3io.cc
+@CreateTime:2021/4/25 16:51
+@DependencyLibrary:无
+@MainFunction:无
+@FileDoc: 
     permissions.py
     文件说明
 @ChangeHistory:
@@ -13,10 +13,8 @@
     2021/4/25 16:51 change 'Fix bug'
         
 """
-from functools import wraps
-
 from srf.constant import ALL_METHOD
-from srf.exceptions import PermissionDenied
+from srf.exceptions import PermissionDenied, APIException
 
 
 class BasePermission:
@@ -42,8 +40,6 @@ class ViewMapPermission(BasePermission):
             }
 
     Note, request.user must need `has_permissions(codes)` method
-
-    :param BasePermission: BasePermission
     """
 
     def get_permission_map(self, view):
@@ -71,22 +67,41 @@ class ViewMapPermission(BasePermission):
         return permission_map
 
 
-def verify_prem(permission_classes: list):
+# def verify_prem(permission_classes: list):
+#     """
+#     verify user has permissions
+#     @return:
+#     """
+#
+#     def set_fun(func):
+#
+#         @wraps(func)
+#         async def call_fun(view, request, *args, **kwargs):
+#             for permission_class in permission_classes:
+#                 if isinstance(permission_class, BasePermission):
+#                     permission_obj = permission_class
+#                 else:
+#                     permission_obj = permission_class()
+#                 await permission_obj.has_permission(request, view)
+#             return await func(view, request, *args, **kwargs)
+#
+#         return call_fun
+#
+#     return set_fun
+def verify_prem(permissions: list, exception: APIException = None):
     """
     verify user has permissions
+    @param permissions: list
+    @param exception:
     @return:
     """
+    if exception is None:
+        exception = PermissionDenied()
 
     def set_fun(func):
-
-        @wraps(func)
         async def call_fun(view, request, *args, **kwargs):
-            for permission_class in permission_classes:
-                if isinstance(permission_class, BasePermission):
-                    permission_obj = permission_class
-                else:
-                    permission_obj = permission_class()
-                await permission_obj.has_permission(request, view)
+            if not await request.user.has_permissions(permissions):
+                raise exception
             return await func(view, request, *args, **kwargs)
 
         return call_fun

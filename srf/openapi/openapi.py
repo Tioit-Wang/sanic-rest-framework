@@ -103,5 +103,3 @@ class ArrayItem:
             "type": self.field_type,
             "items": self.items,
         }
-
-# class Schema:

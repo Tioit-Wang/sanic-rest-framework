@@ -1,10 +1,10 @@
 """
-@Author：WangYuXiang
-@E-mile：Hill@3io.cc
-@CreateTime：2021/3/5 9:44
-@DependencyLibrary：无
-@MainFunction：无
-@FileDoc： 
+@Author:WangYuXiang
+@E-mile:Hill@3io.cc
+@CreateTime:2021/3/5 9:44
+@DependencyLibrary:无
+@MainFunction:无
+@FileDoc: 
     converter.py
     转换器
 @ChangeHistory:
@@ -13,10 +13,14 @@
     2021/3/5 9:44 change 'Fix bug'
         EnumChoiceField
 """
+import copy
+
 from tortoise import fields
 
+from srf.constant import DEFAULT_NESTED_DEPTH
 from srf.fields import (CharField, IntegerField, BooleanField,
-                        DecimalField, DateTimeField, DateField, FloatField, EnumChoiceField
+                        DecimalField, DateTimeField, DateField, FloatField, EnumChoiceField, PrimaryKeyRelatedField,
+                        ManyRelatedField, SlugRelatedField
                         )
 
 
@@ -54,25 +58,28 @@ class ModelConverter(ModelConverterBase):
         model = serializer.Meta.model
         read_only = field_kwargs.get('read_only', False)
         write_only = field_kwargs.get('write_only', False)
+        default = model_field.default
+
         kwargs = {
             'read_only': read_only,
             'write_only': write_only,
             'allow_null': model_field.null,
             'description': model_field.description
         }
-        if not read_only:
-            required = not model_field.null
-
-            kwargs['required'] = required
+        required = not model_field.null
+        if read_only:
+            required = False
 
         type_name = model_field.__class__.__name__
         if isinstance(model_field, fields.relational.RelationalField):
-            nested_depth = serializer.Meta.depth if hasattr(serializer.Meta, 'depth') else 10
+            nested_depth = serializer.Meta.depth if hasattr(serializer.Meta, 'depth') else DEFAULT_NESTED_DEPTH
 
             # kwargs['allow_empty'] = model_field.null
             kwargs['nested_depth'] = nested_depth
-        elif model_field.default is not None:
-            kwargs['default'] = model_field.default
+        elif default is not None:
+            kwargs['default'] = default() if callable(default) else default
+            required = False
+        kwargs['required'] = required
         converter = self.converters[type_name]
         kwargs.update(field_kwargs)
 
@@ -130,46 +137,41 @@ class ModelConverter(ModelConverterBase):
     @converts('ManyToManyFieldInstance', 'ManyToManyRelation')
     def convert_manytomany(self, model, model_field, *field_args, **field_kws):
         """多对多"""
-        nested_depth = field_kws.pop('nested_depth', 10)
+        nested_depth = field_kws.pop('nested_depth', DEFAULT_NESTED_DEPTH)
 
         class NestedSerializer(self.nested_field_class):
             class Meta:
                 model = model_field.related_model
                 depth = nested_depth - 1
                 fields = '__all__'
-
-        return NestedSerializer(many=True)
+        field_kws['required'] = False
+        return NestedSerializer(many=True, **field_kws)
 
     @converts('BackwardFKRelation', )
     def convert_backwardfkrelation(self, model, model_field, *field_args, **field_kws):
         """反向一对多"""
-        nested_depth = field_kws.pop('nested_depth', 10)
+        field_kws.pop('nested_depth', DEFAULT_NESTED_DEPTH)
+        field_kws['read_only'] = True
+        field_kws['required'] = False
 
-        class NestedSerializer(self.nested_field_class):
-            class Meta:
-                model = model_field.related_model
-                depth = nested_depth - 1
-                fields = '__all__'
+        child_relation_kws = copy.deepcopy(field_kws)
+        child_relation_kws['queryset'] = model_field.related_model
+        field_kws['queryset'] = model
+        field_kws['read_only'] = True
 
-        return NestedSerializer(many=True)
+        return ManyRelatedField(child_relation=SlugRelatedField(slug_field='pk', **child_relation_kws), **field_kws)
 
     @converts('ForeignKeyFieldInstance')
     def convert_foreignkeyfieldinstance(self, model, model_field, *field_args, **field_kws):
         """正向多对一"""
-        nested_depth = field_kws.pop('nested_depth', 10)
-
-        class NestedSerializer(self.nested_field_class):
-            class Meta:
-                model = model_field.related_model
-                depth = nested_depth - 1
-                fields = '__all__'
-
-        return NestedSerializer(**field_kws)
+        field_kws.pop('nested_depth', DEFAULT_NESTED_DEPTH)
+        field_kws['queryset'] = model_field.related_model
+        return PrimaryKeyRelatedField(**field_kws)
 
     @converts('OneToOneFieldInstance')
     def convert_onetoonefieldinstance(self, model, model_field, *field_args, **field_kws):
         """正向 一对一"""
-        nested_depth = field_kws.pop('nested_depth', 10)
+        nested_depth = field_kws.pop('nested_depth', DEFAULT_NESTED_DEPTH)
 
         class NestedSerializer(self.nested_field_class):
             class Meta:
@@ -182,7 +184,7 @@ class ModelConverter(ModelConverterBase):
     @converts('BackwardOneToOneRelation')
     def convert_backwardonetoonerelation(self, model, model_field, *field_args, **field_kws):
         """反向一对一"""
-        nested_depth = field_kws.pop('nested_depth', 10)
+        nested_depth = field_kws.pop('nested_depth', DEFAULT_NESTED_DEPTH)
 
         class NestedSerializer(self.nested_field_class):
             class Meta:

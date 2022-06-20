@@ -3,14 +3,16 @@
 @E-mile: Hill@3io.cc
 @CreateTime: 2021/1/20 13:20
 @DependencyLibrary:
-@MainFunction：
+@MainFunction:
 @FileDoc:
     fields.py
     文件说明
 """
 import copy
 import decimal
+import inspect
 import re
+from collections import OrderedDict
 from datetime import timezone, timedelta, datetime, date, time
 from enum import Enum
 from typing import Any, List, Mapping
@@ -18,7 +20,7 @@ from typing import Any, List, Mapping
 from tortoise.exceptions import DoesNotExist
 
 from srf.exceptions import ValidationException
-from srf.openapi import PropItem
+from srf.openapi.openapi import PropItem
 from srf.utils import is_callable, run_awaitable, run_awaitable_val
 from srf.validators import (
     MaxLengthValidator, MinLengthValidator, MaxValueValidator, MinValueValidator
@@ -27,7 +29,8 @@ from srf.validators import (
 REGEX_TYPE = type(re.compile(''))
 
 __all__ = ('empty', 'SkipField', 'Field', 'CharField', 'IntegerField', 'FloatField', 'DecimalField', 'BooleanField',
-           'DateTimeField', 'DateField', 'TimeField', 'ChoiceField', 'EnumChoiceField', 'SerializerMethodField')
+           'DateTimeField', 'DateField', 'TimeField', 'ChoiceField', 'EnumChoiceField', 'RelatedField',
+           'PrimaryKeyRelatedField', 'ManyRelatedField', 'SlugRelatedField')
 
 
 class empty:
@@ -42,8 +45,8 @@ class SkipField(Exception):
     pass
 
 
-NOT_RAED_ONLY_AND_WRITE_ONLY = 'read_only 和 write_only 不能同时为True, 只能二选一'
-NOT_RAED_ONLY_REQUIRED_ONLY = 'read_only 为 True 时 required 不能为True , 只能二选一'
+NOT_RAED_ONLY_AND_WRITE_ONLY = 'May not set both `read_only` and `write_only`'
+NOT_RAED_ONLY_REQUIRED_ONLY = 'May not set both `read_only` and `required`'
 
 
 class Field:
@@ -65,7 +68,7 @@ class Field:
 
     default_validators = None
 
-    def __init__(self, read_only=False, write_only=False, required=False, allow_null=False,
+    def __init__(self, read_only=False, write_only=False, required=None, allow_null=False,
                  default=empty, source=None, validators=None, error_messages=None,
                  label=None, description=None):
         """
@@ -83,6 +86,8 @@ class Field:
         """
         assert not (read_only and write_only), NOT_RAED_ONLY_AND_WRITE_ONLY
         assert not (read_only and required), NOT_RAED_ONLY_REQUIRED_ONLY
+        if required is None and (not read_only or write_only):
+            required = True
         self._sort_counter = Field._sort_counter
         Field._sort_counter += 1
 
@@ -185,13 +190,13 @@ class Field:
     async def external_to_internal(self, data: Any) -> Any:
         """对数据进行反序列化转换并返回"""
         raise NotImplementedError(
-            '{cls}类的 .external_to_internal 方法必须重写'.format(cls=self.__class__.__name__, )
+            'subclasses of {cls} must provide a external_to_internal() method'.format(cls=self.__class__.__name__, )
         )
 
     async def internal_to_external(self, data: Any) -> Any:
         """对数据进行序列化转换并返回"""
         raise NotImplementedError(
-            '{cls}类的 .external_to_internal 方法必须重写'.format(cls=self.__class__.__name__, )
+            'subclasses of {cls} must provide a internal_to_external() method'.format(cls=self.__class__.__name__, )
         )
 
     def get_external_value(self, data: Mapping) -> Any:
@@ -328,8 +333,8 @@ class Field:
             msg = self.error_messages[_key]
         except KeyError:
             class_name = self.__class__.__name__
-            msg = "在 {class_name} 类的 error_messages " \
-                  "属性中未能找到 Key 为 {key} 的错误描述".format(class_name=class_name, key=_key)
+            msg = 'ValidationError raised by `{class_name}`, but error key `{key}` does ' \
+                  'not exist in the `error_messages` dictionary.'.format(class_name=class_name, key=_key)
             raise AssertionError(msg)
         message_string = msg.format(**kwargs)
         raise ValidationException(message_string, code=_key)
@@ -341,9 +346,9 @@ class Field:
 class CharField(Field):
     """字符字段"""
     default_error_messages = {
-        'invalid': '出现错误的数据类型，仅支持整字符类型',
-        'max_length': '最长支持{max_length}个字符',
-        'min_length': '至少要有{min_length}个字符',
+        'invalid': 'Must be a valid string.',
+        'max_length': 'Ensure this field has no more than {max_length} characters.',
+        'min_length': 'The value contains a maximum of {min_length} characters.',
     }
 
     def __init__(self, *args, **kwargs):
@@ -375,10 +380,10 @@ class IntegerField(Field):
     _doc_format = 'int64'
 
     default_error_messages = {
-        'invalid': '出现错误的数据类型，仅支持整数类型',
-        'max_value': '仅支持小于{max_value}的整数',
-        'min_value': '仅支持大于{min_value}的整数',
-        'max_string_length': '仅支持转换长度小于{max_string_length}的整数字符串',
+        'invalid': 'Must be a valid integer.',
+        'max_value': 'Ensure this value is less than or equal to {max_value}',
+        'min_value': 'Ensure this value is greater than or equal to {min_value}',
+        'max_string_length': 'String value too large.',
     }
     re_decimal = re.compile(r'\.0*\s*$')
     MAX_STRING_LENGTH = 1000
@@ -396,7 +401,7 @@ class IntegerField(Field):
 
     async def external_to_internal(self, data: Any):
         if isinstance(data, str) and len(data) > self.MAX_STRING_LENGTH:
-            self.raise_error('max_string_length', max_string_length=self.MAX_STRING_LENGTH)
+            self.raise_error('max_string_length')
         try:
             data = int(self.re_decimal.sub('', str(data)))
         except (ValueError, TypeError):
@@ -412,22 +417,20 @@ class FloatField(IntegerField):
     _doc_type = 'number'
     _doc_format = 'float'
     default_error_messages = {
-        'invalid': '出现错误的数据类型{data_type}，仅支持浮点类型',
-        'max_value': '仅支持小于{max_value}浮点',
-        'min_value': '仅支持大于{min_value}浮点',
-        'max_string_length': '仅支持转换长度小于{max_string_length}的浮点字符串',
+        'invalid': 'Must be a valid float.',
+        'max_value': 'Ensure this value is less than or equal to {max_value}',
+        'min_value': 'Ensure this value is greater than or equal to {min_value}',
+        'max_string_length': 'String value too large.',
     }
     MAX_STRING_LENGTH = 1000
 
     async def external_to_internal(self, data: Any):
-        if isinstance(data, bool):
-            self.raise_error('invalid', data_type=type(data).__name__)
         if isinstance(data, str) and len(data) > self.MAX_STRING_LENGTH:
-            self.raise_error('max_string_length', max_string_length=self.MAX_STRING_LENGTH)
+            self.raise_error('max_string_length')
         try:
             return float(data)
         except (TypeError, ValueError):
-            self.raise_error('invalid', data_type=type(data).__name__)
+            self.raise_error('invalid')
 
     async def internal_to_external(self, data: Any):
         return float(data)
@@ -439,13 +442,13 @@ class DecimalField(Field):
     _doc_format = 'float'
 
     default_error_messages = {
-        'invalid': '出现错误的数据类型，仅支持Decimal十进制类型',
-        'max_value': '仅支持小于{max_value}Decimal十进制类型',
-        'min_value': '仅支持大于{min_value}Decimal十进制类型',
-        'max_string_length': '仅支持转换长度小于{max_string_length}的Decimal十进制字符串',
-        'max_digits': '确保总数不超过{max_digits}个数字。',
-        'max_decimal_places': '确保不超过{max_decimal_places}个小数位。',
-        'max_whole_digits': '确保小数点前的位数不超过{max_whole_digits}个。',
+        'invalid': 'Must be a valid number.',
+        'max_value': 'Ensure this value is less than or equal to {max_value}.',
+        'min_value': 'Ensure this value is greater than or equal to {min_value}.',
+        'max_string_length': 'String value too large.',
+        'max_digits': 'Ensure that there are no more than {max_digits} digits in total.',
+        'max_decimal_places': 'Ensure that there are no more than {max_decimal_places} decimal places.',
+        'max_whole_digits': 'Ensure that there are no more than {max_whole_digits} digits before the decimal point.',
     }
     MAX_STRING_LENGTH = 1000
 
@@ -484,7 +487,7 @@ class DecimalField(Field):
         data = str(data).strip()
 
         if len(data) > self.MAX_STRING_LENGTH:
-            self.raise_error('max_string_length', max_string_length=self.MAX_STRING_LENGTH)
+            self.raise_error('max_string_length')
         try:
             data = decimal.Decimal(data)
         except decimal.DecimalException:
@@ -562,7 +565,7 @@ class BooleanField(Field):
     _doc_type = 'boolean'
 
     default_error_messages = {
-        'invalid': '出现错误的数据类型，{value}不是有效的布尔值',
+        'invalid': 'Must be a valid boolean.',
     }
     TRUE_VALUES = {
         't', 'T',
@@ -591,7 +594,7 @@ class BooleanField(Field):
             elif data in self.NULL_VALUES and self.allow_null:
                 return None
         except TypeError:
-            self.raise_error('invalid', value=data)
+            self.raise_error('invalid')
 
     async def internal_to_external(self, data: Any) -> Any:
         if data in self.TRUE_VALUES:
@@ -603,54 +606,15 @@ class BooleanField(Field):
         return bool(data)
 
 
-class DateField(Field):
-    """日期字段"""
-    _doc_type = 'string'
-    _doc_format = 'date-time'
-
-    default_error_messages = {
-        'invalid': '出现错误的数据类型，{value}不是有效的日期时间类型',
-        'datetime': '需要的是日期格式而不是日期时间格式',
-    }
-
-    def __init__(self, output_format='%Y-%m-%d', input_format='%Y-%m-%d', *args, **kwargs):
-        self.output_format = output_format
-        self.input_format = input_format
-        super(DateField, self).__init__(*args, **kwargs)
-
-    async def external_to_internal(self, data: Any) -> Any:
-        if isinstance(data, str):
-            try:
-                data = datetime.strptime(data, self.input_format).date()
-            except (ValueError, TypeError):
-                self.raise_error('invalid', value=data)
-        if isinstance(data, datetime):
-            self.raise_error('datetime')
-        if isinstance(data, date):
-            return data
-        self.raise_error('invalid', value=data)
-
-    async def internal_to_external(self, data: Any) -> Any:
-        if isinstance(data, str):
-            try:
-                data = datetime.strptime(data, self.input_format).date()
-            except (ValueError, TypeError):
-                self.raise_error('invalid', value=data)
-        if isinstance(data, date):
-            return data.strftime(self.output_format)
-        self.raise_error('invalid', value=data)
-
-
 class DateTimeField(Field):
     """日期时间类型"""
     _doc_type = 'string'
     _doc_format = 'date-time'
 
     default_error_messages = {
-        'invalid': '错误的数据类型{data_type}, 不能转换为字符格式',
-        'convert': '日期转换异常，请确认日期格式符合 %Y-%m-%d %H:%M:%S 规则',
-        'date': '需要的是日期时间格式而不是日期格式',
-        'overflow': '时间超出范围'
+        'invalid': 'Wrong type, should be datetime or string',
+        'format': 'Datetime has wrong format. Use one of these formats instead: {format}.',
+        'overflow': 'Datetime value out of range.'
     }
 
     def __init__(self, output_format='%Y-%m-%d %H:%M:%S', input_format='%Y-%m-%d %H:%M:%S',
@@ -669,41 +633,73 @@ class DateTimeField(Field):
 
     def enforce_timezone(self, value):
         """强制设置一个时区"""
-        return value.astimezone(self.set_timezone)
+
+        try:
+            return value.astimezone(self.set_timezone)
+        except OverflowError:
+            self.raise_error('overflow')
 
     async def external_to_internal(self, data: Any) -> Any:
-        if not isinstance(data, (str, date, datetime)):
-            self.raise_error('convert')
-        if type(data) == date:
-            self.raise_error('date')
+        if not isinstance(data, (str, datetime)):
+            self.raise_error('invalid')
         if isinstance(data, str):
             try:
                 data = datetime.strptime(data, self.input_format)
             except (ValueError, TypeError):
-                self.raise_error('convert')
-        if type(data) == datetime:
-            data = self.enforce_timezone(data)
+                self.raise_error('format', format=self.input_format)
+        data = self.enforce_timezone(data)
         return data
 
     async def internal_to_external(self, data: Any) -> Any:
+        if not data:
+            return None
+        if isinstance(data, str):
+            return data
+        data = datetime.strptime(data, self.input_format)
+        return data.strftime(self.output_format)
+
+
+class DateField(Field):
+    """日期字段"""
+    _doc_type = 'string'
+    _doc_format = 'date-time'
+
+    default_error_messages = {
+        'invalid': 'Wrong type, should be date or string',
+        'format': 'Datetime has wrong format. Use one of these formats instead: {format}.',
+    }
+
+    def __init__(self, output_format='%Y-%m-%d', input_format='%Y-%m-%d', *args, **kwargs):
+        self.output_format = output_format
+        self.input_format = input_format
+        super(DateField, self).__init__(*args, **kwargs)
+
+    async def external_to_internal(self, data: Any) -> Any:
+        if not isinstance(data, (str, date)):
+            self.raise_error('invalid')
         if isinstance(data, str):
             try:
-                data = datetime.strptime(data, self.input_format)
+                data = datetime.strptime(data, self.input_format).date()
             except (ValueError, TypeError):
-                self.raise_error('convert')
-        if isinstance(data, datetime):
-            return data.strftime(self.output_format)
-        self.raise_error('invalid', data_type=type(data).__name__)
+                self.raise_error('format', format=self.input_format)
+        return data
+
+    async def internal_to_external(self, data: Any) -> Any:
+        if not data:
+            return None
+        if isinstance(data, str):
+            return data
+        data = datetime.strptime(data, self.input_format).date()
+        return data.strftime(self.output_format)
 
 
 class TimeField(Field):
     """时间字段"""
 
     default_error_messages = {
-        'invalid': '出现错误的数据类型，{value}不是有效的日期时间类型',
-        'format': '时间格式错误，需要格式为 %H:%M:%S ',
-        'date': '需要的是时间格式而不是日期格式',
-        'datetime': '需要的是时间格式而不是日期时间格式',
+        'invalid': 'Wrong type, should be datetime.time',
+        'format': 'Time has wrong format. Use one of these formats instead: {format}.',
+
     }
 
     def __init__(self, output_format='%H:%M:%S', input_format='%H:%M:%S', *args, **kwargs):
@@ -712,38 +708,33 @@ class TimeField(Field):
         super(TimeField, self).__init__(*args, **kwargs)
 
     async def external_to_internal(self, data: Any) -> Any:
-        if isinstance(data, str):
-            try:
-                data = datetime.strptime(data, self.input_format).time()
-                return data
-            except (ValueError, TypeError):
-                self.raise_error('format')
-        if isinstance(data, datetime):
-            self.raise_error('datetime')
+        if not isinstance(data, (str, time)):
+            self.raise_error('invalid')
         if isinstance(data, time):
             return data
-        if isinstance(data, date):
-            self.raise_error('date')
-        self.raise_error('invalid', value=type(data))
+        try:
+            data = datetime.strptime(data, self.input_format).time()
+        except (ValueError, TypeError):
+            self.raise_error('format', format=self.input_format)
+        return data
 
     async def internal_to_external(self, data: Any) -> Any:
+        if not data:
+            return None
         if isinstance(data, str):
-            try:
-                data = datetime.strptime(data, self.input_format).time()
-            except (ValueError, TypeError):
-                self.raise_error('format')
-        if isinstance(data, datetime):
-            data = data.time()
-        if isinstance(data, time):
-            return data.strftime(self.output_format)
-        self.raise_error('invalid', value=data)
+            return data
+        assert not isinstance(data, datetime), (
+            'Expected a `time`, but got a `datetime`. Refusing to coerce, '
+            'as this may mean losing timezone information. Use a custom '
+            'read-only field and deal with timezone issues explicitly.'
+        )
+        return datetime.strptime(data, self.input_format)
 
 
 class ChoiceField(Field):
     """限定可选的字段"""
     default_error_messages = {
-        'invalid': '出现错误的数据类型，{value}不是有效的日期时间类型',
-        'key': '错误选项{key}',
+        'invalid_choice': '"{input}" is not a valid choice.',
     }
 
     def __init__(self, choices, *args, **kwargs):
@@ -756,7 +747,9 @@ class ChoiceField(Field):
         super(ChoiceField, self).__init__(*args, **kwargs)
 
     async def external_to_internal(self, data: Any) -> Any:
-        return self.choices_get_value_by_key(data)
+        if self.check_key_choices(data):
+            return data
+        self.raise_error('invalid_choice', input=data)
 
     async def internal_to_external(self, data: Any) -> Any:
         return self.choices_get_value_by_key(data)
@@ -767,7 +760,7 @@ class ChoiceField(Field):
             choices_dict = self.get_choices()
             value = choices_dict[key]
             return value
-        self.raise_error('key', key=key)
+        return key
 
     def check_key_choices(self, key):
         choices_dict = self.get_choices()
@@ -804,42 +797,155 @@ class EnumChoiceField(Field):
         return self.value_type(data)
 
 
-class SerializerMethodField(Field):
-    """
-    一个只读字段，可通过在父序列化器类。调用的方法将具有以下形式
-    “ get_ {field_name}”，并且应采用单个参数，即
-    对象被序列化。
-    For example:
+class ListField(Field):
+    _doc_type = 'array'
+    _doc_format = None
+    child = None
+    initial = []
+    default_error_messages = {
+        'not_a_list': 'Expected a list of items but got type "{input_type}".',
+        'empty': 'This list may not be empty.',
+        'min_length': 'Ensure this field has at least {min_length} elements.',
+        'max_length': 'Ensure this field has no more than {max_length} elements.'
+    }
 
-    class ExampleSerializer(self):
-        extra_info = SerializerMethodField()
+    def __init__(self, **kwargs):
+        self.child = kwargs.pop('child', copy.deepcopy(self.child))
+        self.allow_empty = kwargs.pop('allow_empty', True)
+        self.max_length = kwargs.pop('max_length', None)
+        self.min_length = kwargs.pop('min_length', None)
 
-        def get_extra_info(self, obj):
-            return ...  # Calculate some data to return.
-    """
-
-    def __init__(self, method_name=None, **kwargs):
-        self.method_name = method_name
-        kwargs['source'] = '*'
-        kwargs['read_only'] = True
-        if kwargs.get('required'):
-            assert 'SerializerMethodField 为只读字段，不能反序列化'
+        assert not inspect.isclass(self.child), '`child` has not been instantiated.'
+        assert self.child.source is None, (
+            "The `source` argument is not meaningful when applied to a `child=` field. "
+            "Remove `source=` from the field declaration."
+        )
 
         super().__init__(**kwargs)
-
-    def bind(self, field_name, parent):
-        # The method name defaults to `get_{field_name}`.
-        if self.method_name is None:
-            self.method_name = 'get_{field_name}'.format(field_name=field_name)
-
-        super().bind(field_name, parent)
-
-    async def internal_to_external(self, data: Any) -> Any:
-        method = getattr(self.parent, self.method_name)
-        return await run_awaitable(method, data)
-
-    def external_to_internal(self, data: Any) -> Any:
-        raise ValidationException('SerializerMethodField 不支持反序列化')
+        self.child.bind(field_name='', parent=self)
+        if self.max_length is not None:
+            message = {'max_length': 'Ensure this field has no more than {max_length} elements.'}
+            self.validators.append(MaxLengthValidator(self.max_length, message=message))
+        if self.min_length is not None:
+            message = {'min_length': 'Ensure this field has at least {min_length} elements.'}
+            self.validators.append(MinLengthValidator(self.min_length, message=message))
 
     def _doc_properties(self):
-        return None
+        return {
+            "title": '状态码',
+            "type": 'array',
+            "items": self.child._doc_properties()
+        }
+
+    async def external_to_internal(self, data: Any) -> Any:
+        """
+        List of dicts of native values <- List of dicts of primitive datatypes.
+        """
+        if isinstance(data, (str, Mapping)) or not hasattr(data, '__iter__'):
+            self.raise_error('not_a_list', input_type=type(data).__name__)
+        if not self.allow_empty and len(data) == 0:
+            self.raise_error('empty')
+        return await self.run_child_validation(data)
+
+    async def internal_to_external(self, data: Any) -> Any:
+        """
+        List of object instances -> List of dicts of primitive datatypes.
+        """
+        return [await self.child.internal_to_external(item) if item is not None else None for item in data]
+
+    async def run_child_validation(self, data):
+        result = []
+        errors = OrderedDict()
+
+        for idx, item in enumerate(data):
+            try:
+                result.append(await self.child.run_validation(item))
+            except ValidationException as e:
+                errors[idx] = e.error_detail
+
+        if not errors:
+            return result
+        raise ValidationException(errors)
+
+
+class RelatedField(Field):
+    queryset = None
+
+    def __init__(self, **kwargs):
+        self.queryset = kwargs.pop('queryset', self.queryset)
+        super(RelatedField, self).__init__(**kwargs)
+
+    async def get_queryset(self):
+        return self.queryset
+
+
+class PrimaryKeyRelatedField(RelatedField):
+    default_error_messages = {
+        'invalid': 'Invalid value.',
+        'not_exist': 'This value `{value}` is not valid',
+    }
+
+    async def external_to_internal(self, data: Any) -> Any:
+        if self.allow_null and data in ('', None):
+            return None
+        queryset = await self.get_queryset()
+        try:
+            return await queryset.get(pk=data)
+        except DoesNotExist:
+            raise self.raise_error('not_exist', value=data)
+        except (TypeError, ValueError):
+            self.raise_error('invalid')
+
+    async def internal_to_external(self, data: Any) -> Any:
+        return data.pk
+
+
+class SlugRelatedField(RelatedField):
+    """
+    A read-write field that represents the target of the relationship
+    by a unique 'slug' attribute.
+    """
+    default_error_messages = {
+        'invalid': 'Invalid value.',
+        'does_not_exist': 'Object with {slug_name}={value} does not exist.',
+    }
+
+    def __init__(self, slug_field=None, **kwargs):
+        assert slug_field is not None, 'The `slug_field` argument is required.'
+        self.slug_field = slug_field
+        super().__init__(**kwargs)
+
+    async def external_to_internal(self, data):
+        queryset = await self.get_queryset()
+        try:
+            return await queryset.get(**{self.slug_field: data})
+        except DoesNotExist:
+            self.raise_error('does_not_exist', slug_name=self.slug_field, value=data)
+        except (TypeError, ValueError):
+            self.raise_error('invalid')
+
+    async def internal_to_external(self, data):
+        return getattr(data, self.slug_field)
+
+
+class ManyRelatedField(RelatedField):
+    default_error_messages = {
+        'invalid': 'Invalid value.',
+        'not_exist': 'This value `{value}` is not valid',
+    }
+
+    def __init__(self, child_relation, **kwargs):
+        self.child_relation = child_relation
+        super(ManyRelatedField, self).__init__(**kwargs)
+
+    async def external_to_internal(self, data: Any) -> Any:
+        return [
+            await self.child_relation.external_to_internal(item)
+            for item in data
+        ]
+
+    async def internal_to_external(self, data: Any) -> Any:
+        return [
+            await self.child_relation.internal_to_external(value)
+            for value in data
+        ]

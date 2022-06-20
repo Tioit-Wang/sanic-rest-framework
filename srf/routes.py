@@ -3,7 +3,7 @@
 @E-mile: Hill@3io.cc
 @CreateTime: 2021/1/19 16:08
 @DependencyLibrary: 无
-@MainFunction：无
+@MainFunction:无
 @FileDoc:
     routes.py
     便捷路由文件
@@ -12,7 +12,7 @@ from collections import namedtuple
 
 # 默认分组
 
-Route = namedtuple('Route', ['url', 'mapping', 'name', 'detail', 'initkwargs', 'is_base'])
+Route = namedtuple('Route', ['url', 'mapping', 'name', 'detail', 'initkwargs', 'upgrade'])
 
 
 class BaseRoute:
@@ -23,12 +23,12 @@ class BaseRoute:
         :param trailing_slash:
         """
         self.trailing_slash = '/' if trailing_slash else ''
-        self.registry = []
+        self._registry = []
 
-    def register(self, viewset: object, prefix: str, basename: str = None, is_base: bool = False):
+    def register(self, viewset: object, prefix: str, basename: str = None, upgrade: bool = False):
         if basename is None:
             basename = prefix.replace('/', '_')
-        self.registry.append((prefix, viewset, basename, is_base))
+        self._registry.append((prefix, viewset, basename, upgrade))
 
         # invalidate the urls cache
         if hasattr(self, '_urls'):
@@ -56,7 +56,7 @@ class ViewSetRouter(BaseRoute):
             name='{basename}-list',
             detail=False,
             initkwargs={'suffix': 'List'},
-            is_base=False,
+            upgrade=False,
         ),
         Route(
             url=r'{prefix}/<{lookup}:string>{trailing_slash}',
@@ -69,7 +69,7 @@ class ViewSetRouter(BaseRoute):
             name='{basename}-detail',
             detail=True,
             initkwargs={'suffix': 'Instance'},
-            is_base=False,
+            upgrade=False,
         ),
     ]
 
@@ -87,7 +87,7 @@ class ViewSetRouter(BaseRoute):
         """
         ret = []
 
-        for prefix, viewset, basename, is_base in self.registry:
+        for prefix, viewset, basename, upgrade in self._registry:
             lookup = self.get_lookup(viewset)
 
             for route in self.routes:
@@ -96,7 +96,6 @@ class ViewSetRouter(BaseRoute):
                 mapping = self.get_method_map(viewset, route.mapping)
                 if not mapping:
                     continue
-
                 # Build the url pattern
                 uri = route.url.format(
                     prefix=prefix,
@@ -123,12 +122,12 @@ class ViewSetRouter(BaseRoute):
                     'handler': view,
                     'uri': uri,
                     'name': name,
-                    'is_base': is_base,
-
+                    'upgrade': upgrade,
                 })
 
         return ret
 
     def get_method_map(self, viewset, method_map):
         """得到可用的模型"""
-        return {method: action for method, action in method_map.items() if hasattr(viewset, action)}
+        return {method: action for method, action in method_map.items() if
+                hasattr(viewset, action) and action not in viewset.hidden_methods}

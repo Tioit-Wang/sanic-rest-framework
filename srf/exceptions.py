@@ -3,13 +3,13 @@
 @E-mile: Hill@3io.cc
 @CreateTime: 2021/1/20 20:03
 @DependencyLibrary: 无
-@MainFunction：无
+@MainFunction:无
 @FileDoc:
     exceptions.py
     序列化器文件
 """
-
-from srf.status import HttpStatus, RuleStatus
+from srf.response import JsonResponse
+from srf.status import HttpStatus, ResponseCode
 
 
 class CacheExpireEXC(Exception):
@@ -51,27 +51,33 @@ class ValidationException(Exception):
 
 
 class APIException(Exception):
-    def __init__(self, message, status=RuleStatus.STATUS_0_FAIL, http_status=HttpStatus.HTTP_500_INTERNAL_SERVER_ERROR,
-                 *args, **kwargs):
+    def __init__(self, message, data=None, code=ResponseCode.FAIL_CODE, status=HttpStatus.HTTP_200_OK, **kwargs):
         self.message = message
         self.status = status
-        self.http_status = http_status
+        self.code = code
+        self.data = {} if data is None else data
+        self.kwargs = kwargs
 
-    def response_data(self):
-        return {
-            'msg': self.message,
-            'status': self.status,
-            'http_status': self.http_status
-        }
+    @property
+    def response(self):
+        return JsonResponse({
+            'code': self.code,
+            'message': self.message,
+            'data': self.data,
+            **self.kwargs
+        }, status=self.status)
 
 
 class PermissionDenied(APIException):
-    def __init__(self, message='没有操作权限，请完成对应授权', status=RuleStatus.STATUS_0_FAIL, http_status=HttpStatus.HTTP_403_FORBIDDEN,
-                 *args, **kwargs):
-        super().__init__(message, status, http_status, *args, **kwargs)
+    def __init__(self, message='No permission.'):
+        super().__init__(message, status=HttpStatus.HTTP_403_FORBIDDEN)
 
 
 class AuthenticationDenied(APIException):
-    def __init__(self, message='身份验证失败，请重新登录', status=RuleStatus.STATUS_0_FAIL, http_status=HttpStatus.HTTP_401_UNAUTHORIZED,
-                 *args, **kwargs):
-        super().__init__(message, status, http_status, *args, **kwargs)
+    def __init__(self, message='Authentication failed. Please log in again.'):
+        super().__init__(message, status=HttpStatus.HTTP_401_UNAUTHORIZED)
+
+
+class Throttled(APIException):
+    def __init__(self, message='Too many requests. Please try again later.'):
+        super().__init__(message, status=HttpStatus.HTTP_429_TOO_MANY_REQUESTS)

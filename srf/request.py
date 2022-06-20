@@ -1,10 +1,10 @@
 """
-@Author：WangYuXiang
-@E-mile：Hill@3io.cc
-@CreateTime：2021/3/11 15:46
-@DependencyLibrary：无
-@MainFunction：无
-@FileDoc： 
+@Author:WangYuXiang
+@E-mile:Hill@3io.cc
+@CreateTime:2021/3/11 15:46
+@DependencyLibrary:无
+@MainFunction:无
+@FileDoc: 
     request.py
     文件说明
 @ChangeHistory:

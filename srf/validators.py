@@ -1,10 +1,10 @@
 """
-@Author：WangYuXiang
-@E-mile：Hill@3io.cc
-@CreateTime：2021/1/22 10:41
-@DependencyLibrary：无
-@MainFunction：无
-@FileDoc： 
+@Author:WangYuXiang
+@E-mile:Hill@3io.cc
+@CreateTime:2021/1/22 10:41
+@DependencyLibrary:无
+@MainFunction:无
+@FileDoc: 
     validators.py
     文件说明
 @ChangeHistory:

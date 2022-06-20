@@ -1,10 +1,10 @@
 """
-@Author：WangYuXiang
-@E-mile：Hill@3io.cc
-@CreateTime：2021/3/26 14:43
-@DependencyLibrary：无
-@MainFunction：无
-@FileDoc： 
+@Author:WangYuXiang
+@E-mile:Hill@3io.cc
+@CreateTime:2021/3/26 14:43
+@DependencyLibrary:无
+@MainFunction:无
+@FileDoc: 
     mixins.py
     文件说明
 @ChangeHistory:
@@ -13,8 +13,7 @@
     2021/3/26 14:43 change 'Fix bug'
         
 """
-from srf.paginations import ORMPagination
-from srf.status import HttpStatus
+from srf.paginations import ORMPageNumberPagination
 
 __all__ = (
     'ListModelMixin', 'CreateModelMixin', 'RetrieveModelMixin', 'UpdateModelMixin', 'DestroyModelMixin'
@@ -25,7 +24,7 @@ class ListModelMixin:
     """
     适用于输出列表类型数据
     """
-    pagination_class = ORMPagination
+    pagination_class = ORMPageNumberPagination
     detail = False
 
     async def get(self, request, *args, **kwargs):
@@ -36,13 +35,11 @@ class ListModelMixin:
 
         page = await self.paginate_queryset(queryset)
         if page is not None:
-            self.paginator.set_count(await self.get_paginator_count(queryset))
             serializer = self.get_serializer(page, many=True)
-            data = self.get_paginated_response(await serializer.data)
-            return self.success_json_response(msg="查询成功！", data=data)
+            return await self.get_paginated_response(await serializer.data)
 
         serializer = self.get_serializer(queryset, many=True)
-        return self.success_json_response(msg="查询成功！", data=await serializer.data)
+        return self.success_json_response(data=await serializer.data)
 
 
 class CreateModelMixin:
@@ -58,7 +55,7 @@ class CreateModelMixin:
         serializer = self.get_serializer(data=request.data)
         await serializer.is_valid(raise_exception=True)
         await self.perform_create(serializer)
-        return self.success_json_response(msg="创建成功！", data=await serializer.data, http_status=HttpStatus.HTTP_201_CREATED)
+        return self.success_json_response(data=await serializer.data)
 
     async def perform_create(self, serializer):
         await serializer.save()
@@ -76,7 +73,7 @@ class RetrieveModelMixin:
     async def retrieve(self, request, *args, **kwargs):
         instance = await self.get_object()
         serializer = self.get_serializer(instance)
-        return self.success_json_response(msg="查询成功！", data=await serializer.data)
+        return self.success_json_response(data=await serializer.data)
 
 
 class UpdateModelMixin:
@@ -96,7 +93,7 @@ class UpdateModelMixin:
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         await serializer.is_valid(raise_exception=True)
         await self.perform_update(serializer)
-        return self.success_json_response(msg="更新成功！", data=await serializer.data)
+        return self.success_json_response(data=await serializer.data)
 
     async def perform_update(self, serializer):
         await serializer.save()
@@ -117,7 +114,7 @@ class DestroyModelMixin:
     async def destroy(self, request, *args, **kwargs):
         instance = await self.get_object()
         await self.perform_destroy(instance)
-        return self.success_json_response(msg="删除成功！", http_status=HttpStatus.HTTP_200_OK)
+        return self.success_json_response()
 
     async def perform_destroy(self, instance):
         await instance.delete()

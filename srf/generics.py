@@ -28,6 +28,9 @@ class GenericAPIView(APIView):
     filter_class = ORMAndFilter
     search_fields = None
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(args, kwargs)
+
     async def get_object(self):
         """
         返回视图显示的对象。
@@ -43,7 +46,7 @@ class GenericAPIView(APIView):
         filter_kwargs = {lookup_field: self.kwargs[lookup_field]}
         obj = await queryset.get_or_none(**filter_kwargs)
         if obj is None:
-            raise APIException(f'不存在{lookup_field}为{self.kwargs[lookup_field]}的数据', http_status=HttpStatus.HTTP_200_OK)
+            raise APIException(f'不存在{lookup_field}为{self.kwargs[lookup_field]}的数据', status=HttpStatus.HTTP_200_OK)
 
         # May raise a permission denied
         await self.check_object_permissions(self.request, obj)
@@ -52,9 +55,9 @@ class GenericAPIView(APIView):
 
     async def get_queryset(self):
         assert self.queryset is not None, (
-            "'%s'应该包含一个'queryset'属性，"
-            "或重写`get_queryset()`方法。"
-            % self.__class__.__name__
+                "'%s'应该包含一个'queryset'属性，"
+                "或重写`get_queryset()`方法。"
+                % self.__class__.__name__
         )
         queryset = self.queryset
         filter_orm = await self.filter_orm()
@@ -70,11 +73,11 @@ class GenericAPIView(APIView):
         返回应该用于验证和验证的序列化程序实例
         对输入进行反序列化，并对输出进行序列化。
         """
-        serializer_class = self.get_serializer_class(method=self.request.method)
+        serializer_class = self.get_serializer_class()
         kwargs.setdefault('context', self.get_serializer_context())
         return serializer_class(*args, **kwargs)
 
-    def get_serializer_class(self, method=None):
+    def get_serializer_class(self):
         """
         返回用于序列化器的类。
         默认使用`self.serializer_class`。
@@ -85,9 +88,9 @@ class GenericAPIView(APIView):
         （例如，管理员获得完整的序列化，其他获得基本的序列化）
         """
         assert self.serializer_class is not None, (
-            "'%s' should either include a `serializer_class` attribute, "
-            "or override the `get_serializer_class()` method."
-            % self.__class__.__name__
+                "'%s' should either include a `serializer_class` attribute, "
+                "or override the `get_serializer_class()` method."
+                % self.__class__.__name__
         )
         return self.serializer_class
 
@@ -103,44 +106,26 @@ class GenericAPIView(APIView):
     @property
     def paginator(self):
         """
-        与视图关联的分页器实例，或“None”。
+        The paginator instance associated with the view, or `None`.
         """
         if not hasattr(self, '_paginator'):
             if self.pagination_class is None:
                 self._paginator = None
             else:
-                self._paginator = self.pagination_class(self.request, self)
+                self._paginator = self.pagination_class()
         return self._paginator
-
-    async def get_paginator_count(self, queryset):
-        """
-        获取记录总数
-        :param queryset:
-        :return:
-        """
-        return await queryset.count()
 
     async def paginate_queryset(self, queryset):
         """
-        返回单页结果，如果禁用了分页，则返回“无”。
+        Return a single page of results, or `None` if pagination is disabled.
         """
         if self.paginator is None:
             return None
-        offset = (self.paginator.query_page - 1) * self.paginator.query_page_size
-        return queryset.limit(self.paginator.query_page_size).offset(offset)
+        return await self.paginator.paginate_queryset(queryset, self.request, view=self)
 
-    def get_paginated_response(self, data):
-        """
-        返回给定输出数据的分页样式`Response`对象。
-        """
-        return {
-            'count': self.paginator.count,
-            'next': self.paginator.next_link,
-            'next_page_num': self.paginator.next_page,
-            'previous': self.paginator.previous_link,
-            'previous_num': self.paginator.previous_page,
-            'results': data
-        }
+    async def get_paginated_response(self, data):
+        assert self.paginator is not None
+        return await self.paginator.get_paginated_response(data)
 
 
 class CreateAPIView(mixins.CreateModelMixin,

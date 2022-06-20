@@ -3,7 +3,7 @@
 @E-mile: Hill@3io.cc
 @CreateTime: 2021/1/19 15:45
 @DependencyLibrary: 无
-@MainFunction：无
+@MainFunction:无
 @FileDoc:
     constant.py
     全局常量
@@ -38,3 +38,5 @@ LIST_SERIALIZER_KWARGS = (
     'partial'
 )
 ALL_FIELDS = '__all__'
+
+DEFAULT_NESTED_DEPTH = 1

@@ -1,10 +1,10 @@
 """
-@Author：WangYuXiang
-@E-mile：Hill@3io.cc
-@CreateTime：2021/6/2 14:58
-@DependencyLibrary：无
-@MainFunction：无
-@FileDoc： 
+@Author:WangYuXiang
+@E-mile:Hill@3io.cc
+@CreateTime:2021/6/2 14:58
+@DependencyLibrary:无
+@MainFunction:无
+@FileDoc: 
     export_import_view.py
     文件说明
 @ChangeHistory:
@@ -67,13 +67,13 @@ class ExportImportView(ListModelMixin, CreateModelMixin, GenericViewSet):
             serializer = self.serializer_class(data=row_record)
             await serializer.is_valid(raise_exception=True)
             await self.perform_create(serializer)
-        return self.success_json_response(msg='导入成功', http_status=HttpStatus.HTTP_201_CREATED)
+        return self.success_json_response(msg='导入成功', status=HttpStatus.HTTP_201_CREATED)
 
     def load_workbook_by_request(self):
         """从请求中加载Excel"""
         upload_file = self.request.files.get(self.upload_file_key)
         if upload_file:
-            raise APIException(message='必须上传导入文件 file_name.xlsx', http_status=HttpStatus.HTTP_200_OK)
+            raise APIException(message='必须上传导入文件 file_name.xlsx', status=HttpStatus.HTTP_200_OK)
         stream = upload_file.body
         workbook: Workbook = load_workbook(io.BytesIO(stream))
         return workbook

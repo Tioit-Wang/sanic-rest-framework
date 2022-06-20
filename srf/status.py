@@ -3,7 +3,7 @@
 @E-mile: Hill@3io.cc
 @CreateTime: 2021/1/19 9:34
 @DependencyLibrary:
-@MainFunction：
+@MainFunction:
 @FileDoc:
     status.py
     Http status describe file
@@ -31,9 +31,9 @@ def is_server_error(code):
 
 
 # 约定规则状态
-class RuleStatus:
-    STATUS_0_FAIL = 0
-    STATUS_1_SUCCESS = 1
+class ResponseCode:
+    FAIL_CODE = 0
+    SUCCESS_CODE = 1
 
 
 # 协议状态

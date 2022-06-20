@@ -3,7 +3,7 @@
 @E-mile: Hill@3io.cc
 @CreateTime: 2021/1/20 13:20
 @DependencyLibrary:
-@MainFunction：
+@MainFunction:
 @FileDoc:
     qr.py
     序列化器文件
@@ -17,11 +17,11 @@ from tortoise import fields as tortoise_fields
 from tortoise.queryset import ValuesQuery, ValuesListQuery
 
 from srf.constant import LIST_SERIALIZER_KWARGS, ALL_FIELDS
-from srf.converter import ModelConverter
+from srf.converter import ModelConverter, DEFAULT_NESTED_DEPTH
 from srf.exceptions import ValidationException
 from srf.fields import (empty, SkipField, Field)
 from srf.helpers import BindingDict
-from srf.openapi import ObjectItem, ArrayItem
+from srf.openapi.openapi import ObjectItem, ArrayItem
 from srf.utils import run_awaitable, run_awaitable_val
 
 
@@ -128,7 +128,7 @@ class BaseSerializer(Field):
             "而是检查`serializer.validated_data`."
             "如果您还可以将其他关键字参数传递给`save()`，"
             "需要在保存的模型实例上设置额外的属性。"
-            "例如：'serializer.save(owner = request.user)'。"
+            "例如:'serializer.save(owner = request.user)'。"
         )
 
         assert not hasattr(self, '_data'), (
@@ -208,7 +208,8 @@ class BaseSerializer(Field):
         for field_name, field in self.fields.items():
             if field.read_only:
                 continue
-            _object.add(field_name, field._doc_properties(), field.required)
+            required = field.required and not self.partial
+            _object.add(field_name, field._doc_properties(), required)
         return _object.to_dict()
 
     def _doc_response_schema(self):
@@ -300,13 +301,15 @@ class Serializer(BaseSerializer, metaclass=SerializerMetaclass):
         for field in fields:
             method = getattr(self, f'output_{field.field_name}', None)
             try:
-                value = await field.get_internal_value(data)
+                if method:
+                    value = await run_awaitable(method, value, data)
+                else:
+                    value = await field.get_internal_value(data)
             except SkipField:
                 continue
             if value is not None:
                 value = await field.internal_to_external(value)
-            if method:
-                value = await run_awaitable(method, value, data)
+
             res[field.field_name] = value
         return res
 
@@ -462,7 +465,7 @@ class ListSerializer(BaseSerializer):
             "而是检查`serializer.validated_data`."
             "如果您还可以将其他关键字参数传递给`save()`，"
             "需要在保存的模型实例上设置额外的属性。"
-            "例如：'serializer.save(owner = request.user)'。"
+            "例如:'serializer.save(owner = request.user)'。"
         )
 
         validated_data = [
@@ -530,15 +533,16 @@ class ModelSerializer(Serializer):
 
         declared_fields = copy.deepcopy(self._declared_fields)
         model = getattr(self.Meta, 'model')
-        depth = getattr(self.Meta, 'depth', 10)
+        depth = getattr(self.Meta, 'depth', DEFAULT_NESTED_DEPTH)
         if depth is not None:
             assert depth >= 0, "'depth' may not be negative."
             assert depth <= 10, "'depth' may not be greater than 10."
 
         converter = ModelConverter(ModelSerializer)
         model_original_fields = model._meta.fields_map
-        model_clean_fields = self._clean_model_field(model_original_fields)
-        effective_field = self.get_effective_field(model_clean_fields)
+        no_relationship_id_field = self.clean_relationship_field_id(model_original_fields)
+        depth_clean_fields = self.clean_relationship_by_depth(no_relationship_id_field, depth)
+        effective_field = self.get_effective_field(depth_clean_fields)
         serializer_fields = BindingDict(self)
 
         for field_name, field_class in effective_field.items():
@@ -546,6 +550,26 @@ class ModelSerializer(Serializer):
             serializer_fields[field_name] = current_field_class
         serializer_fields.update(declared_fields)
         return serializer_fields
+
+    def clean_relationship_field_id(self, model_fields):
+        relational_tuple = (
+            tortoise_fields.relational.ForeignKeyFieldInstance,
+            tortoise_fields.relational.OneToOneFieldInstance,
+        )
+        clean_list = []
+        for field_name, field_class in model_fields.items():
+            if isinstance(field_class, (*relational_tuple,)):
+                clean_list.append(f'{field_name}_id')
+        return {field_name: field_class for field_name, field_class in model_fields.items() if
+                field_name not in clean_list}
+
+    def clean_relationship_by_depth(self, model_fields, depth):
+        if depth > 0:
+            return model_fields
+        return {field_name: field_class for field_name, field_class in model_fields.items() if
+                not isinstance(field_class, (
+                    tortoise_fields.relational.RelationalField,
+                    tortoise_fields.relational.OneToOneFieldInstance))}
 
     def get_effective_field(self, model_fields) -> dict:
         """
@@ -584,35 +608,10 @@ class ModelSerializer(Serializer):
         else:
             return {'read_only': False, 'write_only': False}
 
-    def _clean_model_field(self, model_original_fields):
-        """
-        清除不需要的字段如 fk_id
-        :param model_original_fields:
-        :return:
-        """
-        clean_field_names = []
-        field_dict = {}
-        fields_map = copy.deepcopy(model_original_fields)
-        basis_fields = self._get_model_basis_fields(fields_map)
-
-        for field_name, field_class in basis_fields.items():
-            if isinstance(field_class, (
-                    tortoise_fields.relational.ForeignKeyFieldInstance,
-                    tortoise_fields.relational.OneToOneFieldInstance)):
-                clean_field_names.append(field_class.source_field)
-            field_dict[field_name] = field_class
-
-        for clean_field_name in clean_field_names:
-            if clean_field_name in field_dict:
-                field_dict.pop(clean_field_name)
-        return field_dict
-
     async def create(self, validated_data):
-        # sourcery skip: dict-comprehension, merge-nested-ifs
         """
         根据验证后的数据进行创建，
         """
-        # raise_errors_on_nested_writes('create', self, validated_data)
 
         ModelClass = self.Meta.model
         ModelClassMeta = ModelClass._meta
@@ -663,39 +662,17 @@ class ModelSerializer(Serializer):
     def _get_model_basis_fields(self, model_fields):
         """
         得到基础字段，非关系字段
-        :param model:
+        :param model_fields:
         :return:
         """
         return {field_name: field_class for field_name, field_class in model_fields.items() if
                 not isinstance(field_class, tortoise_fields.relational.RelationalField)}
-    #
-    # def _get_model_M2M_fields(self, model_fields):
-    #     """
-    #     得到多对多字段
-    #     :param model:
-    #     :return:
-    #     """
-    #     return {field_name: field_class for field_name, field_class in model_fields.items() if isinstance(field_class, tortoise_fields.relational.ManyToManyFieldInstance)}
-    #
-    # def _get_model_O2O_fields(self, model_fields):
-    #     """得到一对一字段"""
-    #     return {field_name: field_class for field_name, field_class in model_fields.items() if
-    #             isinstance(field_class, (tortoise_fields.relational.BackwardOneToOneRelation, tortoise_fields.relational.OneToOneFieldInstance))}
-    #
-    # def _get_model_M2O_fields(self, model_fields):
-    #     """
-    #     得到多对一字段
-    #     :param model:
-    #     :return:
-    #     """
-    #     return {field_name: field_class for field_name, field_class in model_fields.items() if
-    #             isinstance(field_class, tortoise_fields.relational.ForeignKeyFieldInstance)}
-    #
-    # def _get_model_O2M_fields(self, model_fields):
-    #     """
-    #     得到一对多字段
-    #     :param model:
-    #     :return:
-    #     """
-    #     return {field_name: field_class for field_name, field_class in model_fields.items() if
-    #             isinstance(field_class, tortoise_fields.relational.BackwardFKRelation)}
+
+    def _get_model_relational_fields(self, model_fields):
+        """
+        得到基础字段，非关系字段
+        :param model_fields:
+        :return:
+        """
+        return {field_name: field_class for field_name, field_class in model_fields.items() if
+                isinstance(field_class, tortoise_fields.relational.RelationalField)}

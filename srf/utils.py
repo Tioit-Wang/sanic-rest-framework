@@ -1,10 +1,10 @@
 """
-@Author：WangYuXiang
-@E-mile：Hill@3io.cc
-@CreateTime：2021/3/11 16:59
-@DependencyLibrary：无
-@MainFunction：无
-@FileDoc： 
+@Author:WangYuXiang
+@E-mile:Hill@3io.cc
+@CreateTime:2021/3/11 16:59
+@DependencyLibrary:无
+@MainFunction:无
+@FileDoc: 
     utils.py
     文件说明
 @ChangeHistory:
@@ -81,7 +81,7 @@ class IntegrityErrorHandel:
         self.message = str(exc)
 
     def parse_error_str(self):
-        error = '发生错误：{}{}'
+        error = '发生错误:{}{}'
         if 'UNIQUE' in self.message:
             field_name = self.message.split('.')[-1]
             error = error.format(field_name, '已存在')
@@ -96,9 +96,7 @@ async def run_awaitable(func, *args, **kwargs):
 
 
 async def run_awaitable_val(value):
-    if inspect.isawaitable(value):
-        value = await value
-    return value
+    return await value if inspect.isawaitable(value) else value
 
 
 def is_callable(obj):

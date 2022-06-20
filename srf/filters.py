@@ -1,10 +1,10 @@
 """
-@Author：WangYuXiang
-@E-mile：Hill@3io.cc
-@CreateTime：2021/3/10 17:25
-@DependencyLibrary：无
-@MainFunction：无
-@FileDoc： 
+@Author:WangYuXiang
+@E-mile:Hill@3io.cc
+@CreateTime:2021/3/10 17:25
+@DependencyLibrary:无
+@MainFunction:无
+@FileDoc: 
     filters.py
     文件说明
 @ChangeHistory:
@@ -19,7 +19,7 @@ from srf.constant import LOOKUP_SEP
 
 __all__ = ('ORMAndFilter', 'ORMOrFilter')
 
-from srf.openapi import Parameters, Parameter
+from srf.openapi.openapi import Parameters, Parameter
 
 
 class ORMAndFilter:

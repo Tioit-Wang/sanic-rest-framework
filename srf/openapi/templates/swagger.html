@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css"
+          href="//cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui.min.css">
+    <title>SRF OpenAPI Swagger</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+
+<body>
+<div id="openapi"></div>
+<script src="//cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui-bundle.min.js"></script>
+<script
+        src="//cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui-standalone-preset.min.js"></script>
+<script>
+    window.onload = function () {
+        const ui = SwaggerUIBundle({
+            url: "{URL}",
+            dom_id: "#openapi",
+            deepLinking: true,
+            presets: [
+                SwaggerUIBundle.presets.apis,
+                SwaggerUIStandalonePreset
+            ],
+            plugins: [
+                SwaggerUIBundle.plugins.DownloadUrl
+            ],
+            // layout: "StandaloneLayout"
+        })
+    }
+</script>
+</body>
+</html>

@@ -1,10 +1,10 @@
 """
-@Author：WangYuXiang
-@E-mile：Hill@3io.cc
-@CreateTime：2021/3/31 16:21
-@DependencyLibrary：无
-@MainFunction：无
-@FileDoc： 
+@Author:WangYuXiang
+@E-mile:Hill@3io.cc
+@CreateTime:2021/3/31 16:21
+@DependencyLibrary:无
+@MainFunction:无
+@FileDoc: 
     authentication.py
     文件说明
 @ChangeHistory:
@@ -17,7 +17,7 @@ import jwt
 from jwt.exceptions import DecodeError, ExpiredSignatureError
 
 from srf.exceptions import AuthenticationDenied
-from srf.openapi import ApiKeySecurity
+from srf.openapi.openapi import ApiKeySecurity
 from srf.request import SRFRequest
 
 
@@ -31,7 +31,7 @@ class BaseAuthenticate:
 
 class BaseTokenAuthenticate(BaseAuthenticate):
     """基于Token的基础验证 JWT """
-    token_key = 'X-Token'
+    token_key = 'Authorization'
 
     @classmethod
     def get_security(cls):
@@ -44,15 +44,17 @@ class BaseTokenAuthenticate(BaseAuthenticate):
     async def authenticate(self, request: SRFRequest, view: "Type[BaseView]", **kwargs):
         """验证逻辑"""
         token = request.headers.get(self.token_key)
+        if 'Bearer' in token and len(token) > 8:
+            bearer, token = token.split()
         if token is None:
-            raise AuthenticationDenied(f'身份验证错误:请求头{self.token_key}不存在')
+            raise AuthenticationDenied(f'`{self.token_key}` must exist in the request header.')
         token_secret = request.app.config.TOKEN_SECRET
         try:
             token_info = self.authentication_token(token, token_secret)
         except ExpiredSignatureError:
-            raise AuthenticationDenied('登录已过期')
+            raise AuthenticationDenied('Login timeout.')
         except DecodeError:
-            raise AuthenticationDenied('错误的Token')
+            raise AuthenticationDenied('Illegal Token.')
 
         await self._authenticate(request, view, token_info, **kwargs)
 
