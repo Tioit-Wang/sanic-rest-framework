@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name='sanic-rest-framework',
-    version='1.2.2',
+    version='1.2.3',
     packages=find_packages(),
     description="DOC...",
     author="Tioit-Wang",
