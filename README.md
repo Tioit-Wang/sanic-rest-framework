@@ -55,6 +55,7 @@ app = Sanic(name='your app name', request_class=SRFRequest)
 
 ## Project plan
 
+- [x] Support tortoise-orm
 - [x] Arbitrary data source serializer
 - [x] Model serializer
 - [x] Serializer base field
@@ -65,12 +66,12 @@ app = Sanic(name='your app name', request_class=SRFRequest)
 - [x] API view
 - [x] Generics view
 - [x] Model view
-- [ ] Cache view 
-- [ ] Throttling
+- [x] Throttling
 - [x] Paginations
+- [x] UnitTest
 - [ ] Low code intrusion
-- [x] Support tortoise-orm
 - [ ] Support GINO-orm
+- [ ] Cache view 
 
 
 ## Project Template
