@@ -29,7 +29,12 @@
 使用`pip`安装：
 
 ```bash
-pip install sanic-rest-framework
+pip install sanic-rest-framework # Old
+
+# latest version
+git clone https://github.com/Tioit-Wang/sanic-rest-framework.git
+cd sanic-rest-framework
+pip install -e .
 ```
 
 在你的Sanic应用初始化时添加`SRFRequest`：

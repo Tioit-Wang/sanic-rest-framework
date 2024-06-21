@@ -31,7 +31,12 @@ We strongly recommend and officially support only the latest patch versions of t
 Install using `pip`:
 
 ```bash
-pip install sanic-rest-framework
+pip install sanic-rest-framework # Old
+
+# latest version
+git clone https://github.com/Tioit-Wang/sanic-rest-framework.git
+cd sanic-rest-framework
+pip install -e .
 ```
 
 Add `SRFRequest` when initializing your Sanic application:
