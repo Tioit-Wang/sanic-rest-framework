@@ -30,6 +30,7 @@ from rest_framework.fields import (
     ManyRelatedField,
     PrimaryKeyRelatedField,
     SlugRelatedField,
+    JsonField,
 )
 
 
@@ -105,9 +106,13 @@ class ModelConverter(ModelConverterBase):
             field_kws['max_length'] = max_length
         return CharField(*field_args, **field_kws)
 
-    @converts('UUIDField', 'JSONField', 'TextField')
+    @converts('UUIDField', 'TextField')
     def convert_textfield(self, model, model_field, *field_args, **field_kws):
         return CharField(*field_args, **field_kws)
+
+    @converts('JSONField')
+    def convert_jsonfield(self, model, model_field, *field_args, **field_kws):
+        return JsonField(*field_args, **field_kws)
 
     @converts('IntField', 'BigIntField', 'SmallIntField')
     def convert_integerfield(self, model, model_field, *field_args, **field_kws):

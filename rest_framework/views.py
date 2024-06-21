@@ -82,6 +82,7 @@ class BaseView:
 
 class APIView(BaseView):
     """通用视图，可以基于其实现增删改查，提供权限套件"""
+
     authentication_classes = (*srf_settings.DEFAULT_AUTHENTICATION_CLASSES,)
     permission_classes = (*srf_settings.DEFAULT_PERMISSION_CLASSES,)
     throttle_classes = (*srf_settings.DEFAULT_THROTTLE_CLASSES,)
@@ -112,8 +113,7 @@ class APIView(BaseView):
             return await self.handle_exception(exc)
         return response
 
-    def json_response(self, data=None, msg="Request succeeded.", code=ResponseCode.SUCCESS_CODE,
-                      status=HttpStatus.HTTP_200_OK):
+    def json_response(self, data=None, msg="Request succeeded.", code=ResponseCode.SUCCESS_CODE, status=HttpStatus.HTTP_200_OK):
         """
         Json Response
         :param data: Response.Body.Data
@@ -124,11 +124,7 @@ class APIView(BaseView):
         """
         if data is None:
             data = {}
-        return JsonResponse({
-            'data': data,
-            'message': msg,
-            'code': code
-        }, status=status)
+        return JsonResponse({'data': data, 'message': msg, 'code': code}, status=status)
 
     def success_json_response(self, data=None, msg="Request succeeded."):
         """
@@ -146,8 +142,7 @@ class APIView(BaseView):
         :param msg: 前台提示字符串
         :return: json
         """
-        return self.json_response(data=data, msg=msg, code=ResponseCode.FAIL_CODE,
-                                  status=HttpStatus.HTTP_200_OK)
+        return self.json_response(data=data, msg=msg, code=ResponseCode.FAIL_CODE, status=HttpStatus.HTTP_200_OK)
 
     def get_authenticators(self):
         """
@@ -166,7 +161,11 @@ class APIView(BaseView):
         """
         实例化并返回此视图可以使用的身份验证器列表
         """
-        return [throttle() if isinstance(throttle, type) else throttle for throttle in self.throttle_classes]
+        throttles = []
+        for throttle in self.throttle_classes:
+            for rate in self.throttle_rates:
+                throttles.append(throttle(rate))
+        return throttles
 
     async def check_authentication(self, request):
         """

@@ -10,18 +10,22 @@
     datetime action why
     2022/6/8-10:50 [Create] backends.py
 """
+
+from rest_framework.settings import import_string, srf_settings
+
 DEFAULT_TIMEOUT = 300
 CACHE_MAX_ENTRIES = 300
 DEFAULT_VERSION = 1
 
 
 class BaseCache:
-    def __init__(self, timeout=DEFAULT_TIMEOUT, max_entries=CACHE_MAX_ENTRIES, key_prefix=None):
+    def __init__(self, timeout=DEFAULT_TIMEOUT, max_entries=CACHE_MAX_ENTRIES, key_prefix=None, **kwargs):
         self.default_timeout = timeout
         self._max_entries = max_entries
         if key_prefix is None:
             key_prefix = ''
         self.key_prefix = key_prefix
+        self.options = kwargs
 
     def make_cache_key(self, key, version=None):
         if version is None:
@@ -72,3 +76,28 @@ class BaseCache:
     async def incr(self, key, delta=1, version=None):
         """Add delta to the value of the key."""
         raise NotImplementedError("subclasses of BaseCache must provide a incr() method")
+
+
+class CacheManager:
+    def __init__(self):
+        self.caches = {}
+        for name, cache_config in srf_settings.CACHES.items():
+            backend = cache_config.pop('BACKEND', None)
+            options = cache_config.pop('OPTIONS', {})
+            cache_class = import_string(backend)
+            cache = cache_class(**options)
+            self.add_cache(name, cache)
+
+    def __getitem__(self, name):
+        return self.caches[name]
+
+    def add_cache(self, name, cache):
+        self.caches[name] = cache
+
+    def get_cache(self, name):
+        return self.caches[name]
+
+
+cache_manager = CacheManager()
+
+cache = cache_manager.get_cache('default')

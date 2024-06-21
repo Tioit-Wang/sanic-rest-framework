@@ -16,7 +16,7 @@ import time
 from typing import Union, Any
 
 from rest_framework.exceptions import ThrottledException
-from rest_framework.settings import srf_settings
+from rest_framework.cache.backends.base import cache_manager
 
 
 class BaseThrottle:
@@ -27,7 +27,7 @@ class BaseThrottle:
     cache_format = 'throttle_%s'
     rate = '50/min'
 
-    def __init__(self, rate=None):
+    def __init__(self, rate=None, cache_engine_name='default'):
         """
         Initializes the BaseThrottle class.
 
@@ -37,12 +37,7 @@ class BaseThrottle:
         if rate is not None:
             self.rate = rate
         self.num_requests, self.duration = self.parse_rate(self.rate)
-
-    async def get_cache_engine(self):
-        """
-        Get cache engine.
-        """
-        raise NotImplementedError('.get_cache_engine() must be overridden')
+        self.cache_engine = cache_manager.get_cache(cache_engine_name)
 
     def parse_rate(self, rate) -> Union[tuple[None, None], tuple[int, Any]]:
         """
@@ -117,14 +112,13 @@ class RedisThrottle(BaseThrottle):
         Raises:
             ThrottledException: If the request is throttled.
         """
-        cache_engine = await self.get_cache_engine()
         if self.rate is None:
             return True
 
         ident = await self.get_ident(request)
         cache_key = self.cache_format % ident
 
-        cache_value = await cache_engine.get(cache_key)
+        cache_value = await self.cache_engine.get(cache_key)
         if cache_value is not None:
             self.history = json.loads(cache_value)
 
@@ -139,7 +133,7 @@ class RedisThrottle(BaseThrottle):
             raise ThrottledException(message=msg.format(wait=await self.wait()))
 
         self.history.insert(0, self.now)
-        await cache_engine.set(cache_key, json.dumps(self.history), ex=self.duration)
+        await self.cache_engine.set(cache_key, json.dumps(self.history), timeout=self.duration)
         return True
 
     async def wait(self):
@@ -159,18 +153,3 @@ class RedisThrottle(BaseThrottle):
             return None
 
         return int(remaining_duration / float(available_requests) / 1000)
-
-    async def get_cache_engine(self):
-        """
-        Get the Redis cache engine.
-
-        Returns:
-            redis.Redis: Redis client.
-        """
-        import redis.asyncio as redis
-
-        db_config = srf_settings.THROTTLE_DB_CONFIG['redis_db']
-        url_str = f"redis://:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['db']}"
-        pool = redis.ConnectionPool.from_url(url_str, decode_responses=True)
-        client: redis.Redis = redis.Redis(connection_pool=pool)
-        return client

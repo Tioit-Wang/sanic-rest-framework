@@ -12,6 +12,7 @@
 import copy
 import decimal
 import inspect
+import json
 import re
 from collections import OrderedDict
 from datetime import date, datetime, time, timezone
@@ -1157,6 +1158,45 @@ class ListField(Field):
         if self.min_length is not None:
             keywords['minItems'] = self.min_length
         return Array(**keywords)
+
+
+class JsonField(Field):
+    """
+    Field for handling JSON strings.
+
+    This field takes a JSON string as input and outputs a JSON string.
+    """
+
+    default_error_messages = {
+        'invalid_json': 'Invalid JSON input. A valid JSON string is required.',
+    }
+
+    async def external_to_internal(self, data: Any) -> Any:
+        """
+        Convert the external JSON string to a Python dictionary.
+        """
+        if not isinstance(data, str):
+            self.raise_error('invalid_json')
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError:
+            self.raise_error('invalid_json')
+
+    async def internal_to_external(self, data: Any) -> Any:
+        """
+        Convert the internal Python dictionary to a JSON string.
+        """
+        try:
+            return json.dumps(data)
+        except (TypeError, ValueError):
+            self.raise_error('invalid_json')
+
+    def to_openapi(self) -> Schema:
+        """
+        Generate an OpenAPI 3.0 item JSON representation for the field.
+        """
+        keywords = self._default_clsattr_to_oapiattr()
+        return Schema(type="string", format="json", **keywords)
 
 
 # ##########

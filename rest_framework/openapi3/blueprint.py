@@ -5,13 +5,16 @@
 # @Software: VSCode
 import inspect
 import re
+import socket
 from datetime import datetime
 from os.path import abspath, dirname, realpath
 
 from sanic.blueprints import Blueprint
+from sanic.log import logger
 from sanic.response import json, redirect
 
 from rest_framework.openapi3.definitions import Response
+from rest_framework.settings import srf_settings
 
 # from ..utils import get_all_routes, get_blueprinted_routes
 from . import operations, specification
@@ -129,7 +132,6 @@ def blueprint_factory():
 
     @oas3_blueprint.listener("before_server_start")
     def build_spec(app, loop):
-        print("Building OpenAPI 3.0.0 specification...")
         set_operation_default_tags(app)
         for url_tuple, route in app.router.routes_all.items():
             if route.name and "static" in route.name:
@@ -138,71 +140,17 @@ def blueprint_factory():
                 build_classview_specification(url_tuple, route)
             else:
                 build_methodview_specification(url_tuple, route)
-        add_static_info_to_spec_from_config(app, specification)
+        add_static_info_to_spec_from_config(specification)
 
-    #     # --------------------------------------------------------------- #
-    #     # Blueprint Tags
-    #     # --------------------------------------------------------------- #
-
-    #     for blueprint_name, handler in get_blueprinted_routes(app):
-    #         operation = operations[handler]
-    #         if not operation.tags:
-    #             operation.tag(blueprint_name)
-
-    #     # --------------------------------------------------------------- #
-    #     # Operations
-    #     # --------------------------------------------------------------- #
-    #     for (
-    #         uri,
-    #         route_name,
-    #         route_parameters,
-    #         method_handlers,
-    #     ) in get_all_routes(app, oas3_blueprint.url_prefix):
-
-    #         # --------------------------------------------------------------- #
-    #         # Methods
-    #         # --------------------------------------------------------------- #
-
-    #         uri = uri if uri == "/" else uri.rstrip("/")
-
-    #         for method, _handler in method_handlers:
-
-    #             if method == "OPTIONS":
-    #                 continue
-
-    #             if hasattr(_handler, "view_class"):
-    #                 _handler = getattr(_handler.view_class, method.lower())
-    #             operation = operations[_handler]
-
-    #             if operation._exclude:
-    #                 continue
-
-    #             docstring = inspect.getdoc(_handler)
-
-    #             if docstring:
-    #                 operation.autodoc(docstring)
-
-    #             # operation ID must be unique, and it isnt currently used for
-    #             # anything in UI, so dont add something meaningless
-    #             # if not hasattr(operation, "operationId"):
-    #             #     operation.operationId = "%s_%s" % (
-    #             #       method.lower(), route.name
-    #             #     )
-
-    #             for _parameter in route_parameters:
-    #                 if any((param.fields["name"] == _parameter.name for param in operation.parameters)):
-    #                     continue
-
-    #                 operation.parameter(_parameter.name, _parameter.cast, "path")
-
-    #             specification.operation(uri, method, operation)
-
-    #     add_static_info_to_spec_from_config(app, specification)
+        host = socket.gethostbyname(socket.gethostname())
+        logger.info("Swagger UI: http://%s:%s%s/index.html", host, app.config.PORT, oas3_blueprint.url_prefix)
+        logger.info("Swagger UI: http://%s:%s%s/index.html", app.config.HOST, app.config.PORT, oas3_blueprint.url_prefix)
+        logger.info("OpenAPI 3.0.0 specification built successfully.")
 
     return oas3_blueprint
 
 
-def add_static_info_to_spec_from_config(app, specification):
+def add_static_info_to_spec_from_config(specification):
     """
     Reads app.config and sets attributes to specification according to the
     desired values.
@@ -210,27 +158,24 @@ def add_static_info_to_spec_from_config(app, specification):
     Modifies specification in-place and returns None
     """
     specification._do_describe(
-        getattr(app.config, "API_TITLE", "API"),
-        getattr(app.config, "API_VERSION", "1.0.0"),
-        getattr(app.config, "API_DESCRIPTION", None),
-        getattr(app.config, "API_TERMS_OF_SERVICE", None),
+        srf_settings.OPENAPI_TITLE,
+        srf_settings.VERSION,
+        srf_settings.OPENAPI_DESCRIPTION,
+        srf_settings.OPENAPI_TERMS_OF_SERVICE,
     )
 
     specification._do_license(
-        getattr(app.config, "API_LICENSE_NAME", None),
-        getattr(app.config, "API_LICENSE_URL", None),
+        # getattr(app.config, "API_LICENSE_NAME", None),
+        # getattr(app.config, "API_LICENSE_URL", None),
+        srf_settings.OPENAPI_LICENSE_NAME,
+        srf_settings.OPENAPI_LICENSE_URL,
     )
 
     specification._do_contact(
-        getattr(app.config, "API_CONTACT_NAME", None),
-        getattr(app.config, "API_CONTACT_URL", None),
-        getattr(app.config, "API_CONTACT_EMAIL", None),
+        srf_settings.OPENAPI_CONTACT_NAME,
+        srf_settings.OPENAPI_CONTACT_URL,
+        srf_settings.OPENAPI_CONTACT_EMAIL,
     )
 
-    for scheme in getattr(app.config, "API_SCHEMES", ["http"]):
-        host = getattr(app.config, "API_HOST", None)
-        basePath = getattr(app.config, "API_BASEPATH", "")
-        if host is None or basePath is None:
-            continue
-
-        specification.url(f"{scheme}://{host}/{basePath}")
+    for server in srf_settings.OPENAPI_SERVERS:
+        specification.url(server)

@@ -21,10 +21,6 @@ __all__ = ("ListModelMixin", "CreateModelMixin", "RetrieveModelMixin", "UpdateMo
 
 
 class TreeModelMixin:
-    """
-    适用于输出树形结构数据
-    """
-
     parent_field = "parent_id"
     children_field = "children"
     lookup_field = "id"
@@ -41,23 +37,17 @@ class TreeModelMixin:
         return self.success_json_response(data=await self.build_tree_structure(data_list))
 
     async def build_tree_structure(self, data_list: List[dict]):
-        """
-        将平铺的数据列表构建成树形结构
-        :param data_list: 包含树节点信息的字典列表
-        :return: 树的根节点列表
-        """
-
-        # 创建一个字典，用于存储以id为键，项为值的引用
+        # Create a dictionary to store references with id as key and item as value
         item_dict = {item[self.lookup_field]: item for item in data_list}
         for item in item_dict.values():
-            item[self.children_field] = []  # 初始化子节点列表
+            item[self.children_field] = []  # Initialize child node list
 
-        # 初始化根节点列表
+        # Initialize root node list
         tree_root = []
 
         for item in data_list:
             parent_id = item.get(self.parent_field)
-            # 如果存在有效的父节点，将当前项添加到父节点的children中
+            # If there is a valid parent node, add the current item to the parent's children
             if parent_id and parent_id in item_dict:
                 parent_item = item_dict[parent_id]
                 parent_item[self.children_field].append(item)
@@ -65,7 +55,7 @@ class TreeModelMixin:
                 tree_root.append(item)
 
         if self.order_field:
-            # 如果有指定排序字段，则对每个节点的子节点进行排序
+            # If an order field is specified, sort the children of each node
             for item in item_dict.values():
                 item[self.children_field] = sorted(
                     item[self.children_field], key=lambda x: x[self.order_field], reverse=self.order_reverse
@@ -76,9 +66,8 @@ class TreeModelMixin:
 
 class ListModelMixin:
     """
-    适用于输出列表类型数据
+    List a queryset.
     """
-
     pagination_class = ORMPageNumberPagination
     detail = False
 
@@ -99,14 +88,10 @@ class ListModelMixin:
 
 class CreateModelMixin:
     """
-    适用于快速创建内容
-    占用 post 方法
+    Create a model instance.
     """
-
     unique_field = ()
     unique_error_msg = "The value {rt_msg} already exists."
-
-    # unique_field = ()
 
     async def post(self, request, *args, **kwargs):
         return await self.create(request, *args, **kwargs)
@@ -150,10 +135,6 @@ class CreateModelMixin:
 
 
 class RetrieveModelMixin:
-    """
-    适用于查询指定PK的内容
-    """
-
     detail = True
 
     async def get(self, request, *args, **kwargs):
@@ -166,10 +147,6 @@ class RetrieveModelMixin:
 
 
 class UpdateModelMixin:
-    """
-    适用于快速创建更新操作
-    """
-
     async def put(self, request, *args, **kwargs):
         return await self.update(request, *args, **kwargs)
 
@@ -195,10 +172,6 @@ class UpdateModelMixin:
 
 
 class DestroyModelMixin:
-    """
-    用于快速删除
-    """
-
     async def delete(self, request, *args, **kwargs):
         return await self.destroy(request, *args, **kwargs)
 
