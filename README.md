@@ -1,78 +1,89 @@
-# [Sanic REST Framework](https://github.com/encode/django-rest-framework)
+# Sanic Rest Framework (SRF) 
 
-Supports OpenAPI v3.0 Web APIs
+[Chinese](https://github.com/Tioit-Wang/sanic-rest-framework/blob/main/README_CN.md)
 
-Full documentation for the project is available at [Chinese](https://www.tioit.cc/index.php/category/srf/) [English](https://www.tioit.cc/index.php/category/srf_en/)
+SRF is born to provide a highly unified framework for Sanic Web framework, similar to Django + DRF.
 
----
+If you are troubled by the following issues, you should start using SRF immediately:
+- Writing repetitive code for each simple CRUD interface.
+- Repeatedly validating the input and output values of each interface to comply with specific rules.
+- Familiar with the Django ecosystem but puzzled by various Sanic plugins.
+- Still manually implementing various login authentication, permission control, API rate limiting, and API caching.
+- Frustrated by poor ORM plugin support.
 
-## Overview
-
-Sanic REST framework is a powerful and flexible toolkit for building Web APIs.
-
-Some reasons you might want to use REST framework:
-
-- Serialization that supports both ORM and non-ORM data sources.
-- Customizable all the way down - just use regular function-based views if you don't need the more powerful features.
-- Simple and efficient serializer and validator
-- OpenAPI v3.0 swagger supports
-
-<br/>
+## Features
+- **Supports OpenAPI v3.0**: Offers a standalone SwaggerUi, supports customized API documentation, providing a pleasant experience with minimal code.
+- **ClassView-first interface design**: Supports 95% of CRUD needs, achieving login authentication, permission control, API rate limiting, and API caching through configuration.
+- **Rapid development tools**: Provides project-helper for rapid development and organizing project structure.
+- **Highly available serialization tools**: Similar to DRF's serializers and fields.
+- **Comprehensive support for Tortoise ORM**: Deeply integrated with Tortoise ORM.
+- **Complete documentation**: Project documentation is available in both Chinese and English [Chinese](https://tioit.cc/docs/SanicSRF/start) [English](https://tioit.cc/docs/SanicSRF/en/start)
 
 ## Requirements
+- **Sanic**: Latest version 21.6
+- **Tortoise ORM**: Latest version
+- **orjson**: Latest version
 
-- Sanic 21.6+
-- Tortoise ORM 0.17.3+
-- ujson latest
-
-We highly recommend and only officially support the latest patch release of each Sanic and Tortoise ORM series.
-
-<br/>
+We strongly recommend and officially support only the latest patch versions of the Sanic and Tortoise ORM series.
 
 ## Installation
 
-Install using `pip` ...
+Install using `pip`:
 
-```
+```bash
 pip install sanic-rest-framework
 ```
 
-Add `SRFRequest` to you sanic app initialization
+Add `SRFRequest` when initializing your Sanic application:
 
 ```python
-from sanic from Sanic
-from srf.request import SRFRequest
+from sanic import Sanic
+from rest_framework.request import SRFRequest
 
 app = Sanic(name='your app name', request_class=SRFRequest)
 ```
 
-## Simple example
+## Simple Example
 
-[Example in github](https://github.com/Tioit-Wang/srf_simple_example)
+You can check out the [example on Github](https://github.com/Tioit-Wang/srf_simple_example) or open the example in [Web VSCode](https://vscode.dev/github/Tioit-Wang/srf_simple_example).
 
-[Open example in web vscode](https://vscode.dev/github/Tioit-Wang/srf_simple_example)
+```python
+from sanic import Sanic
+from sanic.response import json
+from rest_framework.views import APIView
+from rest_framework.request import SRFRequest
 
+app = Sanic("SampleApp", request_class=SRFRequest)
 
-## Project plan
+class HelloWorldView(APIView):
+    def get(self, request):
+        return json({'hello': 'world'})
 
-- [x] Support tortoise-orm
-- [x] Arbitrary data source serializer
-- [x] Model serializer
-- [x] Serializer base field
-- [x] Complex serializer fields
-- [x] Field validator
-- [x] Permission to verify
-- [x] Identity authentication
-- [x] API view
-- [x] Generics view
-- [x] Model view
-- [x] Throttling
-- [x] Paginations
-- [x] UnitTest
-- [ ] Low code intrusion
-- [ ] Support GINO-orm
-- [ ] Cache view 
+app.add_route(HelloWorldView.as_view(), '/')
 
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
+```
+
+## Project Plan
+
+- ✅ Support for tortoise-orm
+- ✅ Serializer for any data source
+- ✅ Model serializer
+- ✅ Basic fields for serializers
+- ✅ Complex serializer fields
+- ✅ Field validators
+- ✅ Permission validation
+- ✅ Authentication
+- ✅ API views
+- ✅ Generic views
+- ✅ Model views
+- ✅ Throttling
+- ✅ Pagination
+- ✅ Unit tests
+- ❌ Low code intrusion
+- ❌ Support for GINO-orm
+- ❌ Cache views
 
 ## Project Template
 
